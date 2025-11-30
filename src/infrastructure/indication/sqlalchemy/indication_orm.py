@@ -8,14 +8,17 @@ class IndicationOrm(Base):
     __tablename__ = "indication"
 
     indication_id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    group_id: Mapped[int]
+    indication_sequential_number: Mapped[int]
+    indication_status: Mapped[str]
     created_by: Mapped[str]
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True))
     
-    history: Mapped[List["IndicationHistoryOrm"]] = relationship(back_populates="indication")
+    history: Mapped[List["IndicationRevisionOrm"]] = relationship(back_populates="indication")
     
 
-class IndicationHistoryOrm(Base):
-    __tablename__ = "indication_history"
+class IndicationRevisionOrm(Base):
+    __tablename__ = "indication_revision"
 
     indication_history_id: Mapped[str] = mapped_column(String(26), primary_key=True)
     indication_id: Mapped[str] = mapped_column(String(26), ForeignKey("indication.indication_id"))

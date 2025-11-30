@@ -1,7 +1,7 @@
 from domain.common.aware_datetime import AwareDateTime
-from domain.indication.indication import Indication, IndicationDetail
-from domain.indication.value_object import IndicationDetailId, IndicationId
-from infrastructure.indication.sqlalchemy.indication_orm import IndicationHistoryOrm, IndicationOrm
+from domain.indication.indication import Indication, IndicationRevision
+from domain.indication.value_object import IndicationRevisionId, IndicationId
+from infrastructure.indication.sqlalchemy.indication_orm import IndicationRevisionOrm, IndicationOrm
 
 
 def indication_to_orm(indication: Indication) -> IndicationOrm:
@@ -19,8 +19,8 @@ def indication_to_orm(indication: Indication) -> IndicationOrm:
     return indication_orm
 
 
-def _detail_to_history_orm(indication_id: IndicationId, detail: IndicationDetail) -> IndicationHistoryOrm:
-    return IndicationHistoryOrm(
+def _detail_to_history_orm(indication_id: IndicationId, detail: IndicationRevision) -> IndicationRevisionOrm:
+    return IndicationRevisionOrm(
         indication_history_id=detail._indication_detail_id.to_str(),
         indication_id=indication_id,
         created_by=detail._created_by,
@@ -31,8 +31,8 @@ def _detail_to_history_orm(indication_id: IndicationId, detail: IndicationDetail
 
 def orm_to_indication(indication_orm: IndicationOrm) -> Indication:
     history = [
-        IndicationDetail(
-            indication_detail_id=IndicationDetailId.from_str(history.indication_history_id),
+        IndicationRevision(
+            indication_detail_id=IndicationRevisionId.from_str(history.indication_history_id),
             indication_id=IndicationId.from_str(history.indication_id),
             counterparty=history.counterparty,
             created_by=history.created_by,

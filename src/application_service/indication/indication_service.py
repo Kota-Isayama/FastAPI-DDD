@@ -3,11 +3,11 @@ import datetime
 import zoneinfo
 
 import ulid
-from application_service.indication.data_transfer_object import IndicationDetailDto, IndicationGetCommand, IndicationGetResult, IndicationRegisterCommand, IndicationRegisterResult
+from application_service.indication.data_transfer_object import IndicationContentDto, IndicationGetCommand, IndicationGetResult, IndicationRegisterCommand, IndicationRegisterResult, IndicationReviseCommand, IndicationReviseResult
 from application_service.indication.indication_unit_of_work import IIndicationUnitOfWork
 from domain.common.aware_datetime import AwareDateTime
-from domain.indication.indication import Indication, IndicationDetail
-from domain.indication.value_object import IndicationDetailId, IndicationId
+from domain.indication.indication import Indication, IndicationContent, IndicationRevision
+from domain.indication.value_object import IndicationRevisionId, IndicationId
 
 
 class IIndicationSequentialNumberProvider(ABC):
@@ -20,6 +20,7 @@ class IIndicationGroupIdProvider(ABC):
     @abstractmethod
     def group_id() -> int:
         pass
+
 
 class IndicationApplicationService:
     def __init__(
@@ -36,27 +37,29 @@ class IndicationApplicationService:
         with self.__indication_unit_of_work as uow:
             # Generate common data.
             group_id = self.__group_id_provider.group_id()
-            sequential_numbers = self.__sequential_number_provider.sequential_numbers(count=len(command.details))
+            sequential_numbers = self.__sequential_number_provider.sequential_numbers(count=len(command.contents))
             created_at = AwareDateTime(datetime.datetime.now(zoneinfo.ZoneInfo(key="Asia/Tokyo")))
 
             indications: list[Indication] = []
-            for detail, sequential_number in zip(command.details, sequential_numbers):
+            for detail, sequential_number in zip(command.contents, sequential_numbers):
                 indication_id = IndicationId(ulid.ULID())
-                indication_detail_id = IndicationDetailId(ulid.ULID())
+                indication_revision_id = IndicationRevisionId(ulid.ULID())
 
-                detail = IndicationDetail(
-                    indication_detail_id=indication_detail_id,
+                revision = IndicationRevision(
+                    indication_revision_id=indication_revision_id,
+                    indication_revision_version=1,
                     created_by=command.created_by,
                     created_at=created_at,
                     counterparty=detail.counterparty,
-                    indication_id=indication_id,
                 )
                 
                 indication = Indication(
                     indication_id=indication_id,
+                    group_id=group_id,
+                    indication_sequential_number=sequential_number,
                     created_by=command.created_by,
                     created_at=created_at,
-                    history=[detail],    
+                    history=[revision],    
                 )
 
                 indications.append(indication)
@@ -67,6 +70,19 @@ class IndicationApplicationService:
         
         return IndicationRegisterResult(indication_ids=[indication.indication_id.to_str() for indication in indications])
             
+    def revise_indication(self, command: IndicationReviseCommand) -> None:
+        with self.__indication_unit_of_work as uow:
+            indication_id = IndicationId.from_str(command.indication_id)
+            indication = uow.indication_repository().get_by_id(indication_id)
+
+            indication.revice(created_by=command.created_by, indication_content=IndicationContent(counterparty=command.indication_content.counterparty))
+
+            uow.indication_repository().save(indication)
+
+            uow.commit()
+        
+        return IndicationReviseResult.from_indication(indication)
+
     def get_by_id(self, indication_id_str: str) -> IndicationGetResult:
         with self.__indication_unit_of_work as uow:
             indication_id = IndicationId.from_str(indication_id_str)
@@ -76,6 +92,6 @@ class IndicationApplicationService:
             indication_id=indication_id.to_str(),
             created_by=indication._created_by,
             created_at=indication._created_at.to_datetime(),
-            history=[IndicationDetailDto(counterparty=indication_detail._counterparty) for indication_detail in indication._history]
+            history=[IndicationContentDto(counterparty=indication_detail._counterparty) for indication_detail in indication._history]
         )
     

@@ -1,4 +1,4 @@
-from application_service.indication.data_transfer_object import IndicationGetCommand, IndicationGetResult, IndicationRegisterCommand, IndicationRegisterResult
+from application_service.indication.data_transfer_object import IndicationGetCommand, IndicationGetResult, IndicationRegisterCommand, IndicationRegisterResult, IndicationReviseCommand, IndicationReviseResult
 
 
 IndicationRegisterRequestBody = IndicationRegisterCommand
@@ -6,3 +6,6 @@ IndicationRegisterResponseBody = IndicationRegisterResult
 
 IndicationGetRequest = IndicationGetCommand
 IndicationGetResponseBody = IndicationGetResult
+
+IndicationReviseRequestBody = IndicationReviseCommand
+IndicationReviseResponseBody = IndicationReviseResult

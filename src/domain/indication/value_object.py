@@ -1,4 +1,5 @@
 import dataclasses
+import enum
 import ulid
 
 @dataclasses.dataclass(frozen=True)
@@ -18,7 +19,7 @@ class IndicationId:
 
 
 @dataclasses.dataclass(frozen=True)
-class IndicationDetailId:
+class IndicationRevisionId:
     value: ulid.ULID
 
     def __post_init__(self) -> None:
@@ -29,6 +30,12 @@ class IndicationDetailId:
         return str(self.value)
     
     @classmethod
-    def from_str(cls, raw: str) -> "IndicationDetailId":
+    def from_str(cls, raw: str) -> "IndicationRevisionId":
         return cls(ulid.ULID.from_str(raw))
     
+
+class IndicationStatus(enum.Enum):
+    REQUESTING = "requesting"
+    RESPONDED = "responded"
+    DONE = "done"
+    DISPOSAL = "disposal"
