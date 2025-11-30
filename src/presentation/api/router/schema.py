@@ -1,0 +1,8 @@
+from application_service.indication.data_transfer_object import IndicationGetCommand, IndicationGetResult, IndicationRegisterCommand, IndicationRegisterResult
+
+
+IndicationRegisterRequestBody = IndicationRegisterCommand
+IndicationRegisterResponseBody = IndicationRegisterResult
+
+IndicationGetRequest = IndicationGetCommand
+IndicationGetResponseBody = IndicationGetResult
