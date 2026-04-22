@@ -1,4 +1,5 @@
 from __future__ import annotations
+from types import NoneType
 
 """
 Form-first derivative contract model.
@@ -318,10 +319,26 @@ class RelativeDateScheduleSource:
     relation: RelativeDateSchedule
 
 
+class BoundaryAlignment(str, Enum):
+    CURRENT = "CURRENT"
+    PREVIOUS = "PREVIOUS"
+    NEXT = "NEXT"
+
+
+@dataclass(frozen=True)
+class BoundaryAlignedScheduleSource:
+    base_ref: ScheduleRef
+    relation: RelativeDateSchedule
+    alignment: BoundaryAlignment
+    first_date: date | None
+    last_date: date | None
+
+
 ScheduleSource = Union[
     PatternScheduleSource,
     ExplicitDateScheduleSource,
     RelativeDateScheduleSource,
+    BoundaryAlignedScheduleSource,
 ]
 
 
@@ -344,22 +361,30 @@ class ObservationWindow:
 
 
 @dataclass(frozen=True)
-class StepPoint:
+class DateStepPoint:
     effective_date: date
     value: Decimal
 
 
 @dataclass(frozen=True)
-class SteppedDecimal:
+class DateSteppedDecimal:
     initial: Decimal
-    steps: tuple[StepPoint, ...] = ()
+    steps: tuple[DateStepPoint, ...]
 
-    def value_on(self, dt: date) -> Decimal:
-        value = self.initial
-        for step in sorted(self.steps, key=lambda s: s.effective_date):
-            if dt >= step.effective_date:
-                value = step.value
-        return value
+
+@dataclass(frozen=True)
+class IndexStepPoint:
+    effective_index: int
+    value: Decimal
+
+
+@dataclass(frozen=True)
+class IndexSteppedDecimal:
+    initial: Decimal
+    steps: tuple[IndexStepPoint, ...]
+
+
+SteppedDecimal = Union[DateSteppedDecimal, IndexSteppedDecimal]  # Should be SteppedDecimalLike?
 
 
 @dataclass(frozen=True)
@@ -2389,6 +2414,153 @@ def _extract_fx_strike(form: ContractForm, formula_name: str) -> Optional[Decima
 # ---------------------------------------------------------------------------
 # Smoke demo
 # ---------------------------------------------------------------------------
+
+
+
+
+def build_accrual_coupon_swap_with_boundary_alignment_example() -> ContractForm:
+    """
+    Example:
+    - payment schedule is quarterly
+    - accrual_end = current(payment)
+    - accrual_start = previous(payment)
+    - fixing = accrual_start - 2bd
+    """
+    cp = CounterpartySpec(
+        book_party=PartyRef("BANK", "Bank"),
+        counterparty=PartyRef("CLIENT", "Client"),
+    )
+    sofr = UnderlierRef("SOFR", "IR")
+
+    pay_owner = ScheduleOwner(ScheduleOwnerType.LEG, "pay_coupon_leg")
+    receive_owner = ScheduleOwner(ScheduleOwnerType.LEG, "receive_coupon_leg")
+
+    pay_payment = ScheduleNode(
+        node_id=ScheduleNodeId("pay_payment_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.PAYMENT}), pay_owner),
+        source=PatternScheduleSource(
+            pattern=SchedulePattern(
+                start_date=date(2026, 3, 31),
+                end_date=date(2026, 12, 31),
+                frequency="QUARTERLY",
+                end_of_month=True,
+            )
+        ),
+    )
+    pay_accrual_end = ScheduleNode(
+        node_id=ScheduleNodeId("pay_accrual_end_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.ACCRUAL_END}), pay_owner),
+        source=BoundaryAlignedScheduleSource(
+            base_schedule_id=pay_payment.node_id,
+            alignment=BoundaryAlignment.CURRENT,
+        ),
+    )
+    pay_accrual_start = ScheduleNode(
+        node_id=ScheduleNodeId("pay_accrual_start_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.ACCRUAL_START}), pay_owner),
+        source=BoundaryAlignedScheduleSource(
+            base_schedule_id=pay_payment.node_id,
+            alignment=BoundaryAlignment.PREVIOUS,
+        ),
+    )
+    pay_fixing = ScheduleNode(
+        node_id=ScheduleNodeId("pay_fixing_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.FIXING}), pay_owner),
+        source=RelativeDateScheduleSource(
+            base_schedule_id=pay_accrual_start.node_id,
+            offset=-2,
+            unit=OffsetUnit.BUSINESS_DAYS,
+        ),
+    )
+
+    receive_payment = ScheduleNode(
+        node_id=ScheduleNodeId("receive_payment_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.PAYMENT}), receive_owner),
+        source=PatternScheduleSource(
+            pattern=SchedulePattern(
+                start_date=date(2026, 3, 31),
+                end_date=date(2026, 12, 31),
+                frequency="QUARTERLY",
+                end_of_month=True,
+            )
+        ),
+    )
+    receive_accrual_end = ScheduleNode(
+        node_id=ScheduleNodeId("receive_accrual_end_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.ACCRUAL_END}), receive_owner),
+        source=BoundaryAlignedScheduleSource(
+            base_schedule_id=receive_payment.node_id,
+            alignment=BoundaryAlignment.CURRENT,
+        ),
+    )
+    receive_accrual_start = ScheduleNode(
+        node_id=ScheduleNodeId("receive_accrual_start_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.ACCRUAL_START}), receive_owner),
+        source=BoundaryAlignedScheduleSource(
+            base_schedule_id=receive_payment.node_id,
+            alignment=BoundaryAlignment.PREVIOUS,
+        ),
+    )
+    receive_fixing = ScheduleNode(
+        node_id=ScheduleNodeId("receive_fixing_dates"),
+        meaning=ScheduleMeaning(frozenset({DateRole.FIXING}), receive_owner),
+        source=RelativeDateScheduleSource(
+            base_schedule_id=receive_accrual_start.node_id,
+            offset=-2,
+            unit=OffsetUnit.BUSINESS_DAYS,
+        ),
+    )
+
+    return ContractForm(
+        form_id="FORM-ACCRUAL-COUPON-SWAP-BOUNDARY-ALIGNED",
+        form_kind="COUPON_SWAP",
+        parties=cp.both(),
+        party_roles=(
+            PartyRoleAssignment("payer", cp.counterparty.party_id),
+            PartyRoleAssignment("receiver", cp.book_party.party_id),
+        ),
+        references=(sofr,),
+        transfers=(),
+        legs=(
+            AccrualCouponLeg(
+                component_id="pay_coupon_leg",
+                payer_party_id=cp.counterparty.party_id,
+                receiver_party_id=cp.book_party.party_id,
+                reference=sofr,
+                notional=SteppedDecimal(Decimal("10000000")),
+                payment_schedule=ScheduleRef(pay_payment.node_id),
+                accrual_start_schedule=ScheduleRef(pay_accrual_start.node_id),
+                accrual_end_schedule=ScheduleRef(pay_accrual_end.node_id),
+                fixing_schedule=ScheduleRef(pay_fixing.node_id),
+                rate_formula_name="pay_rate_formula",
+                currency=Currency.USD,
+                day_count=DayCount.ACT_360,
+            ),
+            AccrualCouponLeg(
+                component_id="receive_coupon_leg",
+                payer_party_id=cp.book_party.party_id,
+                receiver_party_id=cp.counterparty.party_id,
+                reference=sofr,
+                notional=SteppedDecimal(Decimal("10000000")),
+                payment_schedule=ScheduleRef(receive_payment.node_id),
+                accrual_start_schedule=ScheduleRef(receive_accrual_start.node_id),
+                accrual_end_schedule=ScheduleRef(receive_accrual_end.node_id),
+                fixing_schedule=ScheduleRef(receive_fixing.node_id),
+                rate_formula_name="receive_rate_formula",
+                currency=Currency.USD,
+                day_count=DayCount.ACT_360,
+            ),
+        ),
+        formulas=(
+            FormulaBinding("pay_rate_formula", FixedRateFormula(SteppedDecimal(Decimal("0.0200")))),
+            FormulaBinding("receive_rate_formula", FloatingRateFormula("SOFR", SteppedDecimal(Decimal("0.0010")))),
+        ),
+        mechanisms=(),
+        schedule_nodes=(
+            pay_payment, pay_accrual_end, pay_accrual_start, pay_fixing,
+            receive_payment, receive_accrual_end, receive_accrual_start, receive_fixing,
+        ),
+    )
 
 
 if __name__ == "__main__":
